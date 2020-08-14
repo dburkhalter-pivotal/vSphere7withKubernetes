@@ -1,0 +1,161 @@
+apiVersion: run.tanzu.vmware.com/v1alpha1               #TKG API endpoint
+kind: TanzuKubernetesCluster                         #required parameter
+# v1.37 - 14.aout
+#
+# cluster creation file: source of truth
+#
+# https://docs.vmware.com/en/VMware-vSphere/7.0/vmware-vsphere-with-kubernetes/GUID-4E68C7F2-C948-489A-A909-C7A1F3DC545F.html
+# https://docs.vmware.com/en/VMware-vSphere/7.0/vmware-vsphere-with-kubernetes/GUID-360B0288-1D24-4698-A9A0-5C5206C0BCCF.html
+#
+# get vsphere plugin:
+# curl --output vsphere-plugin.zip https://wcp.haas-277.pez.pivotal.io/wcp/plugin/darwin-amd64/vsphere-plugin.zip
+# https://docs.vmware.com/en/VMware-vSphere/7.0/vmware-vsphere-with-kubernetes/GUID-0F6E45C4-3CB1-4562-9370-686668519FCA.html
+
+# Connect to the Supervisor Cluster as a vCenter Single Sign-On User
+#
+# kubectl vsphere login --server wcp.haas-277.pez.pivotal.io --insecure-skip-tls-verify -u administrator@vsphere.local
+#
+# kubectx wcp.haas-277.pez.pivotal.io
+# kubectl get clusters,wcpclusters,machines,wcpmachines,kubeadmconfigs,machinedeployments,machinesets,wcpmachinetemplates,kubeadmconfigtemplates -A
+# kubectl get clusters,wcpclusters,machines,wcpmachines,machinedeployments,machinesets -A
+#
+
+# Create a wcp/tkg namespace: ns, permissions, storage, content library
+#
+# kubectl get tanzukubernetescluster,virtualmachine  -n db-dev-poc-ns --v=9
+#
+# Connect to the Guest Cluster as a vCenter Single Sign-On User
+# kubectl vsphere login --tanzu-kubernetes-cluster-name dev-poc-cluster --server wcp.haas-277.pez.pivotal.io --insecure-skip-tls-verify -u administrator@vsphere.local
+# kubectl vsphere login --tanzu-kubernetes-cluster-name dev-poc-cluster --server wcp.haas-277.pez.pivotal.io --insecure-skip-tls-verify -u administrator@vsphere.local
+# kubectl vsphere login --tanzu-kubernetes-cluster-name dev-poc-cluster --server wcp.haas-277.pez.pivotal.io --insecure-skip-tls-verify -u devops@vsphere.local
+#
+# kubectl describe ns db-dev-poc-ns
+#
+# kubectx db-dev-poc-ns
+# or kubectl config use-context db-dev-poc-ns
+#
+# kubectl delete tanzukubernetescluster --namespace db-dev-poc-ns dev-poc-cluster
+#
+# add a content library for the first one
+# kubectl apply -f create-cluster1.yaml
+#
+# check creation progression
+#
+# kubectl get tanzukubernetesclusters
+#
+# a good way to track VM and master/work installation progression
+#
+# kubectl describe TanzuKubernetesCluster dev-poc-cluster
+#
+# RFU: on the guest cluster namespace context:
+# kubectl get secret dev-poc-cluster-kubeconfig  -o jsonpath='{.data.value}' | base64 -d > tkg-cluster-kubeconfig-admin
+# kubectl --kubeconfig tkg-cluster-kubeconfig-admin get nodes
+#
+# kubectl create namespace wavefront
+# helm install wavefront wavefront/wavefront --set wavefront.url=https://vmware.wavefront.com --set wavefront.token=1f8787b2-6f03-4b3c-b95c-e806048cffcd --set clusterName=dev-poc-cluster --namespace wavefront
+#
+# kubectl cluster-info
+# Kubernetes master is running at https://10.193.202.66:6443
+# KubeDNS is running at https://10.193.202.66:6443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+
+# kubectl get nodes --show-labels
+# kubectl get nodes -o wide
+# kubectl describe nodes
+# kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="Hostname")].address}'
+# kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.type)]}'
+# ? kubectl get nodes -o jsonpath='{.kubernetes.io}'
+# ? kubernetes.io/os:linux run.tanzu.vmware.com/kubernetesDistributionVersion:v1.17.7_vmware.1-tkg.1.154236c]
+#
+# ? kubectl get virtualmachines.vmoperator.vmware.com -o json | jq -r '[.items[] | {namespace:.metadata.namespace, name:.metadata.name, internalIP: .status.vmIp}]'
+# ? kubectl get sts vsphere-csi-controller -n kube-system
+#
+# TKG is secured by default: we need this command
+# kubectl create clusterrolebinding psp:authenticated  --clusterrole=psp:vmware-system-privileged  --group=system:authenticated
+#
+# only namespaces displayed in the vCenter Server client can deploy applications developed by customers.
+# kl apply -f nginx-lbsvc.yaml
+#
+# to scale the cluster: adapt the ad'hoc count, save it or patch it
+# kubectl edit tanzukubernetescluster/dev-tkg-cluster
+#
+# kubectl -n db-dev-poc-ns get secret dev-poc-cluster-ssh-password -o jsonpath="{@.data.ssh-passwordkey}" | base64 -D
+# URJV....=
+#
+# kubectl -n db-dev-poc-ns get secret dev-poc-cluster-ssh -o jsonpath="{@.data.ssh-privatekey}" | base64 -d > ssh_dev-tkg-cluster.priv
+#
+# create K8s dashboard:
+# kl apply -f https://raw.githubusercontent.com/ModernAppsNinja/v7k8s-tc-templates/master/sc01/kubernetes-dashboard-app.yaml
+#
+# observability: https://docs.wavefront.com/kubernetes.html#kubernetes-setup
+#
+# Kubeapps:
+# https://github.com/kubeapps/kubeapps/blob/master/docs/user/getting-started.md
+#
+# kubectl describe virtualmachine dev-poc-cluster-control-plane-rx52z
+# kubectl describe machine dev-poc-cluster-control-plane-rx52z
+# takes around 20 mns to create 3 masters / 1 worker
+#
+# look at (kubectl describe) virtualmachineclasses guaranteed-small
+#
+# POC data:
+# VSAN storage policy name / GUID ?
+# Ingress Pool:
+# Egress Pool:
+# see Pod Pool / Service pool at the end
+metadata:
+  name: dev-poc-cluster        #cluster name, user defined
+  namespace: db-dev-poc-ns        #supervisor namespace
+spec:
+  distribution:
+# The full distribution name and Kubernetes version can be  specified
+# upgraded done with path operation
+# if minor version is not specified, wcp takes the highest one
+#    fullVersion: null    # NOTE: Must set to null when updating just the version field - upgrade may take time
+#    version: v1.16      #resolved kubernetes version
+    version: v1.17.7      #resolved kubernetes version
+#    version: v1.17.8      #resolved kubernetes version
+#
+  topology:
+    controlPlane:
+      count: 1   #number of control plane nodes (fixed so far)
+#
+# Virtual Machine Class Types
+# https://docs.vmware.com/en/VMware-vSphere/7.0/vmware-vsphere-with-kubernetes/GUID-7351EEFF-4EF0-468F-A19B-6CEA40983D3D.html
+# kubectl get virtualmachineclasses
+# kubectl describe virtualmachineclasses best-effort-xsmall
+#
+      class: best-effort-small      #vmclass for control plane nodes, Cpus:    2     Memory:  4Gi
+#      class: best-effort-large                          #vmclass for control plane nodes
+#      class: guaranteed-large                         #large size VM
+      storageClass: pacific-gold-storage-policy     # pacific-gold-storage-policy     storageclass for control plane
+#
+# Cpus:    2 / Memory:  4Gi
+# so far, one can not change the VM class once instanciated
+# If you want to use Helm or Kubeapps as the defaultClass, which is referenced by many charts,
+
+# add spec.settings.storage.defaultClass to the minimal YAML
+    workers:
+      count: 3   #number of worker nodes
+#      class: best-effort-small
+#      class: guaranteed-small     # 2 cpu - 4 gb vmclass for worker nodes
+      class: guaranteed-medium     # 2 cpu - 8 gb vmclass for worker nodes
+#      class: guaranteed-xlarge                        #extra large size VM
+#
+      storageClass: pacific-gold-storage-policy  # pacific-gold-storage-policy storageclass for worker nodes
+#
+# https://docs.vmware.com/en/VMware-vSphere/7.0/vmware-vsphere-with-kubernetes/GUID-360B0288-1D24-4698-A9A0-5C5206C0BCCF.html
+#  settings:
+#    network:
+#      cni:
+#        name: calico
+#      services:
+# 
+#        cidrBlocks: ["198.51.100.0/12"]        #Cannot overlap with Supervisor Cluster
+#        cidrBlocks: ["10.96.0.0/24"]        #Cannot overlap with Supervisor Cluster
+#
+#      pods:
+#        cidrBlocks: ["192.0.2.0/16"]           #Cannot overlap with Supervisor Cluster
+#        cidrBlocks: ["10.244.0.0/21"]           #Cannot overlap with Supervisor Cluster
+#    storage:
+#      classes: ["gold", "silver"]              #Named PVC storage classes
+#      defaultClass: silver                     #Default PVC storage class
