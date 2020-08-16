@@ -52,7 +52,7 @@ kind: TanzuKubernetesCluster                         #required parameter
 # kubectl --kubeconfig tkg-cluster-kubeconfig-admin get nodes
 #
 # kubectl create namespace wavefront
-# helm install wavefront wavefront/wavefront --set wavefront.url=https://vmware.wavefront.com --set wavefront.token=1f8787b2-6f03-4b3c-b95c-e806048cffcd --set clusterName=dev-poc-cluster --namespace wavefront
+# helm install wavefront wavefront/wavefront --set wavefront.url=https://vmware.wavefront.com --set wavefront.token=xxx --set clusterName=dev-poc-cluster --namespace wavefront
 #
 # kubectl cluster-info
 # Kubernetes master is running at https://10.193.202.66:6443
