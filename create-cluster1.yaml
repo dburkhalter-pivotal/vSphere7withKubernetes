@@ -1,6 +1,6 @@
 apiVersion: run.tanzu.vmware.com/v1alpha1               #TKG API endpoint
 kind: TanzuKubernetesCluster                         #required parameter
-# v1.37 - 14.aout
+# v1.40 - 20.aout
 #
 # cluster creation file: source of truth
 #
